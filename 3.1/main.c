@@ -10,29 +10,28 @@ int main(int argc, char* argv[]) {
     }    
 
     struct stat pathInfo;    
-    int statResult = stat(argv[1], &pathInfo);
+    int statResult = stat(argv[1], &pathInfo);  //получаем информацию
     if (statResult == ERROR_CODE) {
         return reportError("get directiry info", argv[1]);
     } 
 
-    if (S_ISDIR(pathInfo.st_mode) == 0) {
+    if (!S_ISDIR(pathInfo.st_mode)) {
         fprintf(stderr, "Path is not a directory: %s\n", argv[1]);
         return EXIT_FAILURE;
     }
 
-    char* reversedNameDir = createReversedName(argv[1]);
-    if (reversedNameDir == NULL) { 
+    char reversedNameDir[MAX_NAME_LEN];
+    int reversedResult = reverseName(reversedNameDir, MAX_NAME_LEN, argv[1]);
+    if (reversedResult == ERROR_CODE) { 
         return EXIT_FAILURE;
     }
 
     int mkdirResult = createDirectory(reversedNameDir);
     if (mkdirResult == ERROR_CODE) {
-        free(reversedNameDir);
         return EXIT_FAILURE;
     }
 
-    int workResult =  workWithDirectory(argv[1], reversedNameDir);
-    free(reversedNameDir);
+    int workResult =  traverseAndWorkDirectory(argv[1], reversedNameDir);
     if (workResult == ERROR_CODE) {
         return EXIT_FAILURE;
     }

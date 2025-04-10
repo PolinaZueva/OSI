@@ -12,5 +12,6 @@ int openFiles(int* fdSrc, char* srcPath, int* fdDest, char* destPath);
 int closeFiles(int fdSrc, char* srcPath, int fdDest, char* destPath);
 int copyAndReverseFileContent(int fdSrc, char* srcPath, int fdDest, char* destPath);
 int reverseFile(char* srcPath, char* destPath);
+int checkReversedFile(char* srcPath, char* destPath);
 
 #endif

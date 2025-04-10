@@ -12,7 +12,6 @@
 #define ERROR_CODE -1
 
 int reportError(char* action, char* path);
-void reverseString(char* str);
 void reverseBuffer(char* buffer, ssize_t size);
 
 #endif 

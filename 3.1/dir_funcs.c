@@ -1,9 +1,9 @@
 #include "dir_funcs.h"
 
 int buildPath(char* path, int maxNameLen, char* dir, char* name) {
-    int length = snprintf(path, maxNameLen, "%s/%s", dir, name);
-    if (length < 0 || length >= maxNameLen) {
-        fprintf(stderr, "Path too long: %s/%s\n", dir, name);
+    int lenPath = snprintf(path, maxNameLen, "%s/%s", dir, name);
+    if (lenPath >= maxNameLen) {
+        fprintf(stderr, "Path is too long: %s/%s\n", dir, name);
         return ERROR_CODE;
     }  
     return 0;
@@ -17,51 +17,38 @@ int createDirectory(char* path) {
     return 0;
 }
 
-char* createReversedName(char* name) {
-    char* reversedName = strdup(name);
-    if (reversedName == NULL) {
-        reportError("allocate memory for name", name);
-        return NULL;
-    }
-    reverseString(reversedName);
-    return reversedName;
-}
-
-int processFile(char* srcPath, char* destPath, char* reversedName, DIR* dir) {
-    int reverseResult = reverseFile(srcPath, destPath);
-    if (reverseResult == ERROR_CODE) {
-        free(reversedName);
-        closedir(dir);
+int reverseName(char* reversedName, size_t maxLen, char* name) {
+    size_t lenName = strlen(name);
+    if (lenName >= maxLen) {
+        fprintf(stderr, "Name is too long: %s\n", name);
         return ERROR_CODE;
     }
+    strcpy(reversedName, name);
+    reverseBuffer(reversedName, lenName);
     return 0;
 }
 
-int processDirectory(char* srcPath, char* destPath, char* reversedName, DIR* dir) {
+int reverseDirectory(char* srcPath, char* destPath) {
     int mkdirResult = createDirectory(destPath);
     if (mkdirResult == ERROR_CODE) {
-        free(reversedName);
-        closedir(dir);
         return ERROR_CODE;
     }
 
-    int recursiveResult = workWithDirectory(srcPath, destPath);
+    int recursiveResult = traverseAndWorkDirectory(srcPath, destPath);
     if (recursiveResult == ERROR_CODE) {
-        free(reversedName);
-        closedir(dir);
         return ERROR_CODE;
     }
     return 0;
 }
 
-int processEntryType(struct stat* sb, char* srcPath, char* destPath, char* reversedName, DIR* dir) {
+int handleFileOrDirectory(struct stat* pathInfo, char* srcPath, char* destPath, DIR* dir) {
     int processResult = 0;
-    if (S_ISREG(sb->st_mode)) {
-        processResult = processFile(srcPath, destPath, reversedName, dir);
+    if (S_ISREG(pathInfo->st_mode)) {
+        processResult = checkReversedFile(srcPath, destPath);
     }
 
-    if (S_ISDIR(sb->st_mode)) {
-        processResult = processDirectory(srcPath, destPath, reversedName, dir);
+    if (S_ISDIR(pathInfo->st_mode)) {
+        processResult = reverseDirectory(srcPath, destPath);
     }
 
     if (processResult == ERROR_CODE) {
@@ -71,7 +58,7 @@ int processEntryType(struct stat* sb, char* srcPath, char* destPath, char* rever
     return 0;
 }
 
-int processEntry(struct dirent *entry, char* srcDir, char* destDir, DIR *dir) {
+int processDirectoryEntry(struct dirent *entry, char* srcDir, char* destDir, DIR *dir) {
     char srcPath[MAX_NAME_LEN];        
     int srcResult = buildPath(srcPath, MAX_NAME_LEN, srcDir, entry->d_name);
     if (srcResult == ERROR_CODE) { 
@@ -79,8 +66,9 @@ int processEntry(struct dirent *entry, char* srcDir, char* destDir, DIR *dir) {
         return reportError("build source path", srcPath);
     }        
         
-    char* reversedName = createReversedName(entry->d_name);
-    if (reversedName == NULL) {
+    char reversedName[MAX_NAME_LEN];
+    int reversedResult = reverseName(reversedName, MAX_NAME_LEN, entry->d_name);
+    if (reversedResult == ERROR_CODE) {
         closedir(dir);
         return ERROR_CODE;
     }
@@ -89,41 +77,38 @@ int processEntry(struct dirent *entry, char* srcDir, char* destDir, DIR *dir) {
     int destResult = buildPath(destPath, MAX_NAME_LEN, destDir, reversedName);
     if (destResult == ERROR_CODE) { 
         closedir(dir);
-        free(reversedName);
         return reportError("build destination path", destPath);
     }
             
-    struct stat sb; 
-    int statResult = lstat(srcPath, &sb);
-    if (statResult == ERROR_CODE) {           
-        free(reversedName); 
+    struct stat pathInfo; 
+    int statResult = lstat(srcPath, &pathInfo);
+    if (statResult == ERROR_CODE) { 
         closedir(dir);
         return reportError("get file info about", srcPath);       
     }          
      
-    int processResult = processEntryType(&sb, srcPath, destPath, reversedName, dir);
+    int processResult = handleFileOrDirectory(&pathInfo, srcPath, destPath, dir);
     if (processResult == ERROR_CODE) {
-        free(reversedName);
         return ERROR_CODE;
     }
-    
-    free(reversedName);
     return 0;
 }
 
-int workWithDirectory(char* srcPath, char* destPath) {
+int traverseAndWorkDirectory(char* srcPath, char* destPath) {
     DIR *dir = opendir(srcPath);  
     if (dir == NULL) {
         return reportError("open directory", srcPath);
     }
 
     struct dirent *entry;
+    char* curDir = ".";
+    char* parentDir = "..";
     while ((entry = readdir(dir)) != NULL) {        
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+        if (strcmp(entry->d_name, curDir) == 0 || strcmp(entry->d_name, parentDir) == 0) {
             continue;
         }
 
-        int processResult = processEntry(entry, srcPath, destPath, dir);
+        int processResult = processDirectoryEntry(entry, srcPath, destPath, dir);  //обрабатываем файлы и каталоги
         if (processResult == ERROR_CODE) {
             return ERROR_CODE;
         }        
@@ -131,7 +116,7 @@ int workWithDirectory(char* srcPath, char* destPath) {
 
     int closeDirResult = closedir(dir);
     if (closeDirResult == ERROR_CODE) {
-        return reportError("close directiry", srcPath);        
+        return reportError("close directory", srcPath);        
     }    
     return 0;
 }
