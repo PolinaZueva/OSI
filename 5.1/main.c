@@ -18,8 +18,9 @@ void childProcess(int* localInitialVar) {
     *localInitialVar = 3;
     globalInitialVar = 4;
     printf("Child: Содержимое локальной переменной после изменений: %d\n", *localInitialVar);
-    printf("Child: Содержимое глобальной переменной после изменений: %d\n\n", globalInitialVar);  
-    exit(5);        
+    printf("Child: Содержимое глобальной переменной после изменений: %d\n\n", globalInitialVar); 
+    getc(stdin); 
+    _exit(5);        
 }
 
 void parentProcess(int* localInitialVar) {
