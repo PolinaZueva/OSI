@@ -24,7 +24,7 @@ void childProcess(int* localInitialVar) {
 }
 
 void parentProcess(int* localInitialVar) {
-    sleep(10);
+    sleep(20);
     int status;
     pid_t resultWait = wait(&status);
     if (resultWait == ERROR_CODE) {
