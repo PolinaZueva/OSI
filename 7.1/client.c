@@ -29,7 +29,7 @@ int work_with_communication(int sockfd, struct sockaddr_in* server_addr) {
         return ERROR;
     }
 
-    ssize_t bytes_received = recvfrom(sockfd, message, BUFFER_SIZE, 0, NULL, NULL);
+    ssize_t bytes_received = recvfrom(sockfd, message, BUFFER_SIZE, WITHOUT_FLAGS, NULL, NULL);
     if (bytes_received == ERROR) {
         perror("Ошибка в recvfrom");
         return ERROR;
@@ -58,7 +58,7 @@ int main() {
         int work_return_res = work_with_communication(sockfd, &server_addr);
 
         if (work_return_res == RETURN_FOR_EXIT) break;
-        
+
         if (work_return_res == ERROR) {
             close(sockfd);
             return EXIT_FAILURE;      

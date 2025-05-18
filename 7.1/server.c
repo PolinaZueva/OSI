@@ -11,13 +11,14 @@
 #define SERVER_PORT 7000
 #define BUFFER_SIZE 1024
 #define ERROR -1
+#define WITHOUT_FLAGS 0
 
 int work_with_client_request (int sockfd) {
     char message[BUFFER_SIZE];
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr); 
 
-    ssize_t bytes_received = recvfrom(sockfd, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_len);
+    ssize_t bytes_received = recvfrom(sockfd, message, BUFFER_SIZE, WITHOUT_FLAGS, (struct sockaddr *)&client_addr, &client_len);
     if (bytes_received == ERROR) {
         perror("Ошибка в recvfrom");
         return ERROR;
@@ -25,7 +26,7 @@ int work_with_client_request (int sockfd) {
 
     printf("Received from client: %s", message);
 
-    ssize_t bytes_sended = sendto(sockfd, message, bytes_received, 0, (struct sockaddr *)&client_addr, client_len);
+    ssize_t bytes_sended = sendto(sockfd, message, bytes_received, WITHOUT_FLAGS, (struct sockaddr *)&client_addr, client_len);
     if (bytes_sended == ERROR) {
         perror("Ошибка в sendto");
         return ERROR;
