@@ -4,53 +4,65 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <errno.h>
-#include <string.h>
 
-#define PORT 7000
+#define SERVER_IP "127.0.0.1"
+#define SERVER_PORT 7000
 #define BUFFER_SIZE 1024
 #define ERROR -1
 
-int main() {
+int work_with_client_request (int sockfd) {
     char message[BUFFER_SIZE];
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t client_len = sizeof(client_addr);
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr); 
 
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    ssize_t bytes_received = recvfrom(sockfd, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_len);
+    if (bytes_received == ERROR) {
+        perror("Ошибка в recvfrom");
+        return ERROR;
+    }
+
+    printf("Received from client: %s", message);
+
+    ssize_t bytes_sended = sendto(sockfd, message, bytes_received, 0, (struct sockaddr *)&client_addr, client_len);
+    if (bytes_sended == ERROR) {
+        perror("Ошибка в sendto");
+        return ERROR;
+    }   
+    return 0;
+}
+
+int main() {
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;          
+    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+    if (server_addr.sin_addr.s_addr == INADDR_NONE) {
+        perror("Некорректный формат IP адреса");
+        return EXIT_FAILURE;
+    }
+    server_addr.sin_port = htons(SERVER_PORT);         
+
+    int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sockfd == ERROR) {
         perror("Ошибка в socket");
         return EXIT_FAILURE;
-    }
+    }  
 
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;          
-    server_addr.sin_addr.s_addr = INADDR_ANY;  //принимаем соединения с любого IP
-    server_addr.sin_port = htons(PORT);       
-
-    int bind_res = bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    if (bind_res == ERROR) {
+    int bind_return_res = bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    if (bind_return_res == ERROR) {
         perror("Ошибка в bind");
         close(sockfd);
         return EXIT_FAILURE;
     }
 
     while (1) {
-        int bytes_received = recvfrom(sockfd, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_len);
-        if (bytes_received == ERROR) {
-            perror("Ошибка в recvfrom");
-            continue;
-        }
-
-        message[bytes_received] = '\0';
-        printf("Received from client: %s\n", message);
-
-        int bytes_sended = sendto(sockfd, message, bytes_received, 0, (struct sockaddr *)&client_addr, client_len);
-        if (bytes_sended == ERROR) {
-            perror("Ошибка в sendto");
-            continue;
+        int work_return_res = work_with_client_request(sockfd);
+        if (work_return_res == ERROR) {
+            close(sockfd);
+            return EXIT_FAILURE;
         }
     }
-
     close(sockfd);
     return EXIT_SUCCESS;
 }
