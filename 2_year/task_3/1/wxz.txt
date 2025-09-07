@@ -1,0 +1,18 @@
+gcc -Wall -Wextra -pedantic -c helpers.c -o helpers.o
+gcc -Wall -Wextra -pedantic -c file_funcs.c -o file_funcs.o
+gcc -Wall -Wextra -pedantic -c dir_funcs.c -o dir_funcs.o
+gcc -Wall -Wextra -pedantic -c main.c -o main.o
+gcc main.o helpers.o file_funcs.o dir_funcs.o -o main
+./main qwerty
+
+ИЛИ
+
+gcc -Wall -Wextra -pedantic main.c helpers.c file_funcs.c dir_funcs.c -o main
+
+./main qwerty
+mv qwerty check/qwerty
+./main ytrewq
+diff -r check/qwerty qwerty
+
+
+gcc -Wall -Wextra -pedantic main.c -o main
