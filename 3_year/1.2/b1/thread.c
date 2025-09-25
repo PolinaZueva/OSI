@@ -13,6 +13,10 @@
 void *mythread(void *arg) {
 	printf("mythread [%d %d %d]: Hello from mythread\n", getpid(), getppid(), gettid());
 	int *ret_num = malloc(sizeof(int));
+	if (ret_num == NULL) {
+		printf("mythread: malloc failed\n");
+		return NULL;
+	}
 	*ret_num = 42;
 	return (void*)ret_num;
 }

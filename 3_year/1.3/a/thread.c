@@ -5,41 +5,45 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <stdlib.h>
 
 #define RETURN_CODE 0
 #define ERROR -1
 
+typedef struct {
+    int number;
+    char *message;
+} mythread_struct;
+
+typedef mythread_struct* mythread_t;
+
 void *mythread(void *arg) {
-	printf("mythread [%d %d %d]: Hello from mythread\n", getpid(), getppid(), gettid());
-	char* ret_message = malloc(12 * sizeof(char));
-	if (ret_message == NULL) {
-		printf("mythread: malloc failed\n");
-		return NULL;
-	}
-	strcpy(ret_message, "hello world");
-	return ret_message;
+    mythread_t data = (mythread_t)arg;
+	printf("mythread [%d %d %d]: Hello from mythread that receive number [%d], message [%s]\n", 
+            getpid(), getppid(), gettid(), data->number, data->message);
+	return NULL;
 }
 
 int main() {
 	pthread_t tid;
 	int err;
-	char *thread_ret_res;
+
+    mythread_struct data = {
+        .number = 1,
+        .message = "hello from joinable"
+    };
 
 	printf("main [%d %d %d]: Hello from main\n", getpid(), getppid(), gettid());
 
-	err = pthread_create(&tid, NULL, mythread, NULL);
+	err = pthread_create(&tid, NULL, mythread, &data);
 	if (err != RETURN_CODE) {
 	    printf("main: pthread_create() failed: %s\n", strerror(err));
 		return ERROR;
 	}
-	
-    err = pthread_join(tid, (void**)&thread_ret_res);
+
+    err = pthread_join(tid, NULL);
     if (err != RETURN_CODE) {
         printf("main: pthread_join() failed: %s\n", strerror(err));
 		return ERROR;
-    }	
-	printf("main [%d %d %d]: thread returned: %s\n", getpid(), getppid(), gettid(), thread_ret_res);
-	free(thread_ret_res);
+    }
 	return 0;
 }
