@@ -12,7 +12,8 @@
 
 void *mythread(void *arg) {
 	printf("mythread [%d %d %d]: Hello from mythread\n", getpid(), getppid(), gettid());
-	return "hello world";
+	char *hello = "hello world";  //указатель на сегмент данных .rodata
+	return (void *)hello; 
 }
 
 int main() {

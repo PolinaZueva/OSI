@@ -15,13 +15,12 @@ typedef struct {
     char *message;
 } mythread_struct;
 
-typedef mythread_struct* mythread_t;
-
 void *mythread(void *arg) {
-    mythread_t data = (mythread_t)arg;
+    mythread_struct* data = (mythread_struct*)arg;
 	printf("mythread [%d %d %d]: Hello from mythread that receive number [%d], message [%s]\n", 
             getpid(), getppid(), gettid(), data->number, data->message);
-    free(data);
+    free(data->message);        
+    free(data);    
 	return NULL;
 }
 
@@ -32,24 +31,33 @@ int main() {
 
     printf("main [%d %d %d]: Hello from main\n", getpid(), getppid(), gettid());
 
-    mythread_t data = malloc(sizeof(mythread_struct));
+    mythread_struct* data = malloc(sizeof(mythread_struct));
     if (data == NULL) {
 		printf("main: malloc failed\n");
 		return ERROR;
 	}
     data->number = 2;
-    data->message = "hello from detached";	
+    char* hello = "hello from detached";
+    data->message = malloc(strlen(hello) + 1);
+    if (data->message == NULL) {
+        printf("main: malloc failed\n");
+        free(data);
+		return ERROR;
+    }
+    strcpy(data->message, hello);
 
     err = pthread_attr_init(&attr);
     if (err != RETURN_CODE) {
         printf("main: pthread_attr_init() failed: %s\n", strerror(err));
-        free(data);
+        free(data->message);
+        free(data);        
 		return ERROR;
     }
 
     err = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     if (err != RETURN_CODE) {
         printf("main: pthread_attr_setdetachstate() failed: %s\n", strerror(err));
+        free(data->message);
         free(data);
         pthread_attr_destroy(&attr);
 		return ERROR;
@@ -59,14 +67,14 @@ int main() {
 	if (err != RETURN_CODE) {
 	    printf("main: pthread_create() failed: %s\n", strerror(err));
         pthread_attr_destroy(&attr);
+        free(data->message);
+        free(data);
 		return ERROR;
 	}
 
     err = pthread_attr_destroy(&attr);
     if (err != RETURN_CODE) {
         printf("main: pthread_attr_destroy() failed: %s\n", strerror(err));
-		return ERROR;
     }
-    sleep(1);
-	return 0;
+    pthread_exit(NULL);  //завершаем main и поток продолжит свою работу
 }

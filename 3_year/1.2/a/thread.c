@@ -31,6 +31,5 @@ int main() {
         printf("main: pthread_join() failed: %s\n", strerror(err));
 		return ERROR;
     }
-
 	return 0;
 }

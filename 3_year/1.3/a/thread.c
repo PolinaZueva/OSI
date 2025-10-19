@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #define RETURN_CODE 0
 #define ERROR -1
@@ -14,10 +15,8 @@ typedef struct {
     char *message;
 } mythread_struct;
 
-typedef mythread_struct* mythread_t;
-
 void *mythread(void *arg) {
-    mythread_t data = (mythread_t)arg;
+    mythread_struct* data = (mythread_struct*)arg;
 	printf("mythread [%d %d %d]: Hello from mythread that receive number [%d], message [%s]\n", 
             getpid(), getppid(), gettid(), data->number, data->message);
 	return NULL;
@@ -26,13 +25,12 @@ void *mythread(void *arg) {
 int main() {
 	pthread_t tid;
 	int err;
-
-    mythread_struct data = {
-        .number = 1,
-        .message = "hello from joinable"
-    };
-
+    mythread_struct data; 
+    
 	printf("main [%d %d %d]: Hello from main\n", getpid(), getppid(), gettid());
+
+    data.number = 1;
+    data.message = "hello from joinable";
 
 	err = pthread_create(&tid, NULL, mythread, &data);
 	if (err != RETURN_CODE) {
