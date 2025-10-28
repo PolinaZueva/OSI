@@ -14,7 +14,6 @@
 void *mythread(void *arg) {
 	while (true) {
         printf("mythread [%d %d %d]: sends a message...\n", getpid(), getppid(), gettid());
-        sleep(1);
     }
     return NULL;
 }
@@ -31,8 +30,6 @@ int main() {
 	    printf("main: pthread_create() failed: %s\n", strerror(err));
 		return ERROR;
 	}
-
-    sleep(3);
     
     err = pthread_cancel(tid);
     if (err != RETURN_CODE) {

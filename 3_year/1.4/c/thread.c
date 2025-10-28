@@ -10,6 +10,7 @@
 
 #define RETURN_CODE 0
 #define ERROR -1
+#define EXECUTE 1
 
 void free_message_cleanup(void *arg) {
     char *message_ptr = (char *)arg;
@@ -32,10 +33,9 @@ void *mythread(void *arg) {
     
 	while (true) {
         printf("mythread [%d %d %d]: %s\n", getpid(), getppid(), gettid(), message);
-        pthread_testcancel();
         sleep(1);
     }
-    pthread_cleanup_pop(0);
+    pthread_cleanup_pop(EXECUTE);
     return NULL;
 }
 
@@ -51,8 +51,6 @@ int main() {
 	    printf("main: pthread_create() failed: %s\n", strerror(err));
 		return ERROR;
 	}
-
-    sleep(3);
     
     err = pthread_cancel(tid);
     if (err != RETURN_CODE) {
