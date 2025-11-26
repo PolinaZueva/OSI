@@ -33,7 +33,6 @@ void *mythread(void *arg) {
     
 	while (true) {
         printf("mythread [%d %d %d]: %s\n", getpid(), getppid(), gettid(), message);
-        sleep(1);
     }
     pthread_cleanup_pop(EXECUTE);
     return NULL;
