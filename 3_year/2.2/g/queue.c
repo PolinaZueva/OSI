@@ -5,21 +5,21 @@
 #include "queue.h"
 
 void *qmonitor(void *arg) {
-	int err;
 	queue_t *q = (queue_t *)arg;
 	printf("qmonitor: [%d %d %d]\n", getpid(), getppid(), gettid());
 
 	while (1) {
-		err = pthread_mutex_lock(&q->mutex);
+		int err;
+		err = sem_wait(&q->queue_lock);
 		if (err != SUCCESS) {
-			printf("qmonitor: pthread_mutex_lock() failed: %s\n", strerror(err));
-			continue;
+			printf("qmonitor: sem_wait(queue_lock) failed: %s\n", strerror(err));
+			break;
 		}
 		queue_print_stats(q);
-		err = pthread_mutex_unlock(&q->mutex);
+		err = sem_post(&q->queue_lock);
 		if (err != SUCCESS) {
-			printf("qmonitor: pthread_mutex_unlock() failed: %s\n", strerror(err));
-			continue;
+			printf("qmonitor: sem_post(queue_lock) failed: %s\n", strerror(err));
+			break;
 		}
 		sleep(1);
 	}
@@ -28,7 +28,6 @@ void *qmonitor(void *arg) {
 
 queue_t* queue_init(int max_count) {
 	int err;
-
 	queue_t *q = malloc(sizeof(queue_t));
 	if (q == NULL) {
 		printf("Cannot allocate memory for a queue\n");
@@ -43,17 +42,27 @@ queue_t* queue_init(int max_count) {
 	q->add_attempts = q->get_attempts = 0;
 	q->add_count = q->get_count = 0;
 
-	err = pthread_mutex_init(&q->mutex, NULL);
+	err = sem_init(&q->empty_slots, SEMAPHORE_PRIVATE, max_count);
 	if (err != SUCCESS) {
-		printf("queue_init: pthread_mutex_init() failed: %s\n", strerror(err));
+		printf("queue_init: sem_init(empty_slots) failed: %s\n", strerror(err));
 		free(q);
 		abort();
 	}
-	err = pthread_cond_init(&q->cond, NULL);
+	err = sem_init(&q->filled_slots, SEMAPHORE_PRIVATE, 0);
 	if (err != SUCCESS) {
-		printf("queue_init: pthread_cond_init() failed: %s\n", strerror(err));
-		err = pthread_mutex_destroy(&q->mutex);
-		if (err != SUCCESS) printf("queue_init: pthread_mutex_destroy() failed: %s\n", strerror(err));
+		printf("queue_init: sem_init(filled_slots) failed: %s\n", strerror(err));
+		err = sem_destroy(&q->empty_slots);
+		if (err != SUCCESS) printf("queue_init: sem_destroy(empty_slots) failed: %s\n", strerror(err));
+		free(q);
+		abort();
+	}
+	err = sem_init(&q->queue_lock, SEMAPHORE_PRIVATE, 1);
+	if (err != SUCCESS) {
+		printf("queue_init: sem_init(queue_lock) failed: %s\n", strerror(err));
+		err = sem_destroy(&q->empty_slots);
+		if (err != SUCCESS) printf("queue_init: sem_destroy(empty_slots) failed: %s\n", strerror(err));
+		err = sem_destroy(&q->filled_slots);
+		if (err != SUCCESS) printf("queue_init: sem_destroy(filled_slots) failed: %s\n", strerror(err));
 		free(q);
 		abort();
 	}
@@ -61,10 +70,12 @@ queue_t* queue_init(int max_count) {
 	err = pthread_create(&q->qmonitor_tid, NULL, qmonitor, q);
 	if (err != SUCCESS) {
 		printf("queue_init: pthread_create() failed: %s\n", strerror(err));
-		err = pthread_cond_destroy(&q->cond);
-		if (err != SUCCESS) printf("queue_init: pthread_cond_destroy() failed: %s\n", strerror(err));
-		err = pthread_mutex_destroy(&q->mutex);
-		if (err != SUCCESS) printf("queue_init: pthread_mutex_destroy() failed: %s\n", strerror(err));
+		err = sem_destroy(&q->empty_slots);
+		if (err != SUCCESS) printf("queue_init: sem_destroy(empty_slots) failed: %s\n", strerror(err));
+		err = sem_destroy(&q->filled_slots);
+		if (err != SUCCESS) printf("queue_init: sem_destroy(filled_slots) failed: %s\n", strerror(err));
+		err = sem_destroy(&q->queue_lock);
+		if (err != SUCCESS) printf("queue_init: sem_destroy(queue_lock) failed: %s\n", strerror(err));
         free(q);
 		abort();
 	}
@@ -83,14 +94,18 @@ void queue_destroy(queue_t *q) {
 	if (err != SUCCESS) {
 		printf("queue_destroy: pthread_join() failed: %s\n", strerror(err));
 	}
-	err = pthread_cond_destroy(&q->cond);
-	if (err != SUCCESS) {
-		printf("queue_destroy: pthread_cond_destroy() failed: %s\n", strerror(err));
-	}
-	err = pthread_mutex_destroy(&q->mutex);
-	if (err != SUCCESS) {
-		printf("queue_destroy: pthread_mutex_destroy() failed: %s\n", strerror(err));
-	}
+	err = sem_destroy(&q->empty_slots);
+    if (err != SUCCESS) {
+        printf("queue_destroy: sem_destroy(empty_slots) failed: %s\n", strerror(err));
+    }
+    err = sem_destroy(&q->filled_slots);
+    if (err != SUCCESS) {
+        printf("queue_destroy: sem_destroy(filled_slots) failed: %s\n", strerror(err));
+    }
+    err = sem_destroy(&q->queue_lock);
+    if (err != SUCCESS) {
+        printf("queue_destroy: sem_destroy(queue_lock) failed: %s\n", strerror(err));
+    }
 	
 	qnode_t *current = q->first;
 	while(current != NULL) {
@@ -103,47 +118,35 @@ void queue_destroy(queue_t *q) {
 
 int queue_add(queue_t *q, int val) {
 	int err;	
+	q->add_attempts++;
 	qnode_t *new = malloc(sizeof(qnode_t));
 	if (new == NULL) {
 		printf("Cannot allocate memory for new node\n");		
 		return QUEUE_ERROR;
 	}
 
-	err = pthread_mutex_lock(&q->mutex);
-	if (err != SUCCESS) {
-		printf("queue_add: pthread_mutex_lock() failed: %s\n", strerror(err));
-		free(new);		
-		return QUEUE_ERROR;
-	}
-	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	int old_cancel_state;
+	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
 	if (err != SUCCESS) {
 		printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		free(new);	
-		err = pthread_mutex_unlock(&q->mutex);
-		if (err != SUCCESS) printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
 		return QUEUE_ERROR;
 	}
-
-	q->add_attempts++;	
-	while (q->count == q->max_count) {
-		err = pthread_cond_wait(&q->cond, &q->mutex);
-		/* if (err != SUCCESS) {
-			printf("queue_add: pthread_cond_wait() failed: %s\n", strerror(err));
-			err = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL); 
-			if (err != SUCCESS) printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err));  
-			err = pthread_mutex_unlock(&q->mutex);
-			if (err != SUCCESS) printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
-			return QUEUE_ERROR;
-		}	 */
-	}
-	err = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-	if (err != SUCCESS) {
-		printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		free(new);	
-		err = pthread_mutex_unlock(&q->mutex);
-		if (err != SUCCESS) printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
-		return QUEUE_ERROR;
-	}			
+	err = sem_wait(&q->empty_slots);
+    if (err != SUCCESS) {
+        printf("queue_add: sem_wait(empty_slots) failed: %s\n", strerror(err));
+		err = pthread_setcancelstate(old_cancel_state, NULL); 
+		if (err != SUCCESS) printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err)); 
+        return QUEUE_ERROR;
+    }
+	err = sem_wait(&q->queue_lock);
+    if (err != SUCCESS) {
+        printf("queue_add: sem_wait(queue_lock) failed: %s\n", strerror(err));
+		err = sem_post(&q->empty_slots);
+		if (err != SUCCESS) printf("queue_add: sem_post(empty_slots) failed: %s\n", strerror(err));
+		err = pthread_setcancelstate(old_cancel_state, NULL); 
+		if (err != SUCCESS) printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err)); 
+        return QUEUE_ERROR;
+    }
 
 	new->val = val;
 	new->next = NULL;
@@ -156,52 +159,45 @@ int queue_add(queue_t *q, int val) {
 	q->count++;
 	q->add_count++;
 
-	err = pthread_cond_broadcast(&q->cond);
-	/* if (err != SUCCESS) {
-		printf("queue_add: pthread_cond_broadcast() failed: %s\n", strerror(err));
-		return QUEUE_ERROR;
-	} */
-	err = pthread_mutex_unlock(&q->mutex);
+	err = sem_post(&q->queue_lock);
 	if (err != SUCCESS) {
-		printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err));
+		printf("queue_add: sem_post(queue_lock) failed: %s\n", strerror(err));
 	}
+	err = sem_post(&q->filled_slots);
+    if (err != SUCCESS){
+        printf("queue_add: sem_post(filled_slots) failed: %s\n", strerror(err));
+	}
+	err = pthread_setcancelstate(old_cancel_state, NULL);
+	if (err != SUCCESS)
+		printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err));
 	return QUEUE_SUCCESS;
 }
 
 int queue_get(queue_t *q, int *val) {
-	int err;	
-	err = pthread_mutex_lock(&q->mutex);
-	if (err != SUCCESS) {
-		printf("queue_get: pthread_mutex_lock() failed: %s\n", strerror(err));
-		return QUEUE_ERROR;
-	}
-	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-	if (err != SUCCESS) {
-		printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		err = pthread_mutex_unlock(&q->mutex);
-		if (err != SUCCESS) printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
-		return QUEUE_ERROR;
-	}
-	
+	int err;
 	q->get_attempts++;
-	while (q->count == 0) {
-		err = pthread_cond_wait(&q->cond, &q->mutex);
-		/* if (err != SUCCESS) {
-			printf("queue_add: pthread_cond_wait() failed: %s\n", strerror(err)); 
-			err = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL); ;
-			if (err != SUCCESS) printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err));
-			err = pthread_mutex_unlock(&q->mutex);
-			if (err != SUCCESS) printf("queue_get: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
-			return QUEUE_ERROR;
-		}	 */	
-	}
-	err = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	int old_cancel_state;	
+	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
 	if (err != SUCCESS) {
-		printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		err = pthread_mutex_unlock(&q->mutex);
-		if (err != SUCCESS) printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
+		printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
 		return QUEUE_ERROR;
 	}
+    err = sem_wait(&q->filled_slots);
+    if (err != SUCCESS) {
+        printf("queue_get: sem_wait(filled_slots) failed: %s\n", strerror(err));
+		err = pthread_setcancelstate(old_cancel_state, NULL); 
+		if (err != SUCCESS) printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
+        return QUEUE_ERROR;
+    }
+    err = sem_wait(&q->queue_lock);
+    if (err != SUCCESS) {
+        printf("queue_get: sem_wait(queue_lock) failed: %s\n", strerror(err));
+		err = sem_post(&q->empty_slots);
+		if (err != SUCCESS) printf("queue_get: sem_post(filled_slots) failed: %s\n", strerror(err));
+		err = pthread_setcancelstate(old_cancel_state, NULL); 
+		if (err != SUCCESS) printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
+        return QUEUE_ERROR;
+    }
 
 	qnode_t *tmp = q->first;
 	*val = tmp->val;
@@ -211,14 +207,18 @@ int queue_get(queue_t *q, int *val) {
 	q->count--;
 	q->get_count++;
 
-	err = pthread_cond_broadcast(&q->cond);
-	/* if (err != SUCCESS) {
-		printf("queue_get: pthread_cond_broadcast() failed: %s\n", strerror(err));
-		return QUEUE_ERROR;
-	} */
-	err = pthread_mutex_unlock(&q->mutex);
+	err = sem_post(&q->queue_lock);
 	if (err != SUCCESS) {
-		printf("queue_get: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
+		printf("queue_get: sem_post(queue_lock) failed: %s\n", strerror(err));
+	}
+	err = sem_post(&q->empty_slots);
+    if (err != SUCCESS){
+        printf("queue_get: sem_post(empty_slots) failed: %s\n", strerror(err));
+	}
+	err = pthread_setcancelstate(old_cancel_state, NULL);
+	if (err != SUCCESS) {
+		printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
+		return QUEUE_ERROR;
 	}
 	return QUEUE_SUCCESS;
 }

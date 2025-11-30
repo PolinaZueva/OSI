@@ -8,11 +8,13 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <semaphore.h> 
 
 #define SUCCESS 0
 #define ERROR -1
 #define QUEUE_ERROR 0
 #define QUEUE_SUCCESS 1
+#define SEMAPHORE_PRIVATE 0
 
 typedef struct _QueueNode {
 	int val;
@@ -24,8 +26,10 @@ typedef struct _Queue {
 	qnode_t *last;
 
 	pthread_t qmonitor_tid;
-	pthread_mutex_t mutex;
-	pthread_cond_t cond; 
+
+	sem_t empty_slots;    
+    sem_t filled_slots;   
+    sem_t queue_lock;          
 
 	int count;
 	int max_count;
