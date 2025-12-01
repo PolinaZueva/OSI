@@ -80,11 +80,11 @@ void *writer(void *arg) {
 		pthread_testcancel();
 		int ok = queue_add(q, i);
 		if (ok != QUEUE_SUCCESS) {
-			usleep(1);
+			//usleep(1);
 			continue;			
 		}
 		i++;
-		usleep(1);
+		//usleep(1);
 	}
 	return NULL;
 }
@@ -95,6 +95,10 @@ int main() {
 	int err;
 	printf("main [%d %d %d]\n", getpid(), getppid(), gettid());
 	q = queue_init(1000000);
+	if (q == NULL) {  
+        printf(RED"ERROR: Failed to initialize queue" NOCOLOR "\n");
+        return ERROR;
+    }
 
 	err = pthread_create(&reader_tid, NULL, reader, q);
 	if (err != SUCCESS) {
