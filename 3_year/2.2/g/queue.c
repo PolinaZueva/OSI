@@ -38,7 +38,6 @@ queue_t* queue_init(int max_count) {
 	q->last = NULL;
 	q->max_count = max_count;
 	q->count = 0;
-
 	q->add_attempts = q->get_attempts = 0;
 	q->add_count = q->get_count = 0;
 
@@ -46,7 +45,7 @@ queue_t* queue_init(int max_count) {
 	if (err != SUCCESS) {
 		printf("queue_init: sem_init(empty_slots) failed: %s\n", strerror(err));
 		free(q);
-		abort();
+		return NULL;
 	}
 	err = sem_init(&q->filled_slots, SEMAPHORE_PRIVATE, 0);
 	if (err != SUCCESS) {
@@ -54,7 +53,7 @@ queue_t* queue_init(int max_count) {
 		err = sem_destroy(&q->empty_slots);
 		if (err != SUCCESS) printf("queue_init: sem_destroy(empty_slots) failed: %s\n", strerror(err));
 		free(q);
-		abort();
+		return NULL;
 	}
 	err = sem_init(&q->queue_lock, SEMAPHORE_PRIVATE, 1);
 	if (err != SUCCESS) {
@@ -64,7 +63,7 @@ queue_t* queue_init(int max_count) {
 		err = sem_destroy(&q->filled_slots);
 		if (err != SUCCESS) printf("queue_init: sem_destroy(filled_slots) failed: %s\n", strerror(err));
 		free(q);
-		abort();
+		return NULL;
 	}
 
 	err = pthread_create(&q->qmonitor_tid, NULL, qmonitor, q);
@@ -77,7 +76,7 @@ queue_t* queue_init(int max_count) {
 		err = sem_destroy(&q->queue_lock);
 		if (err != SUCCESS) printf("queue_init: sem_destroy(queue_lock) failed: %s\n", strerror(err));
         free(q);
-		abort();
+		return NULL;
 	}
 	return q;
 }
@@ -117,6 +116,8 @@ void queue_destroy(queue_t *q) {
 }
 
 int queue_add(queue_t *q, int val) {
+	if (q == NULL) return QUEUE_ERROR;
+
 	int err;	
 	q->add_attempts++;
 	qnode_t *new = malloc(sizeof(qnode_t));
@@ -177,6 +178,8 @@ int queue_add(queue_t *q, int val) {
 }
 
 int queue_get(queue_t *q, int *val) {
+	if (q == NULL) return QUEUE_ERROR;
+	
 	int err;
 	q->get_attempts++;
 	int old_cancel_state;	
