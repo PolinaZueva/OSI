@@ -36,7 +36,7 @@ queue_t* queue_init(int max_count) {
 	if (err != SUCCESS) {
 		printf("queue_init: pthread_spin_init() failed: %s\n", strerror(err));
 		free(q);
-		abort();
+		return NULL;
 	}
 
 	err = pthread_create(&q->qmonitor_tid, NULL, qmonitor, q);
@@ -45,7 +45,7 @@ queue_t* queue_init(int max_count) {
 		err = pthread_spin_destroy(&q->spinlock); 
 		if (err != SUCCESS) printf("queue_init: pthread_spin_destroy() failed: %s\n", strerror(err));
         free(q);
-		abort();
+		return NULL;
 	}
 	return q;
 }
@@ -77,6 +77,8 @@ void queue_destroy(queue_t *q) {
 }
 
 int queue_add(queue_t *q, int val) {
+	if (q == NULL) return QUEUE_ERROR;
+
 	int err;	
 	err = pthread_spin_lock(&q->spinlock);
 	if (err != SUCCESS) {
@@ -118,6 +120,8 @@ int queue_add(queue_t *q, int val) {
 }
 
 int queue_get(queue_t *q, int *val) {
+	if (q == NULL) return QUEUE_ERROR;
+	
 	int err;	
 	err = pthread_spin_lock(&q->spinlock);
 	if (err != SUCCESS) {
