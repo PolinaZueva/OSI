@@ -111,7 +111,9 @@ int queue_add(queue_t *q, int val) {
 	q->add_count++;
 
 	err = pthread_spin_unlock(&q->spinlock);
-	if (err != SUCCESS) printf("queue_add: pthread_spin_unlock() failed: %s\n", strerror(err)); 
+	if (err != SUCCESS) { 
+		printf("queue_add: pthread_spin_unlock() failed: %s\n", strerror(err)); 
+	}
 	return QUEUE_SUCCESS;
 }
 
@@ -139,7 +141,9 @@ int queue_get(queue_t *q, int *val) {
 	q->get_count++;
 
 	err = pthread_spin_unlock(&q->spinlock);
-	if (err != SUCCESS) printf("queue_get: pthread_spin_unlock() failed: %s\n", strerror(err)); 
+	if (err != SUCCESS) {
+		printf("queue_get: pthread_spin_unlock() failed: %s\n", strerror(err)); 
+	}
 	return QUEUE_SUCCESS;
 }
 

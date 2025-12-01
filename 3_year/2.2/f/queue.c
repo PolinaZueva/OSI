@@ -10,7 +10,6 @@ void *qmonitor(void *arg) {
 	printf("qmonitor: [%d %d %d]\n", getpid(), getppid(), gettid());
 
 	while (1) {
-		int err;
 		err = pthread_mutex_lock(&q->mutex);
 		if (err != SUCCESS) {
 			printf("qmonitor: pthread_mutex_lock() failed: %s\n", strerror(err));
