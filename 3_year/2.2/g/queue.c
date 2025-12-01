@@ -183,7 +183,6 @@ int queue_get(queue_t *q, int *val) {
 	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
 	if (err != SUCCESS) {
 		printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		free(new);
 		return QUEUE_ERROR;
 	}
     err = sem_wait(&q->filled_slots);
@@ -191,7 +190,6 @@ int queue_get(queue_t *q, int *val) {
         printf("queue_get: sem_wait(filled_slots) failed: %s\n", strerror(err));
 		err = pthread_setcancelstate(old_cancel_state, NULL); 
 		if (err != SUCCESS) printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		free(new);
         return QUEUE_ERROR;
     }
     err = sem_wait(&q->queue_lock);
@@ -201,7 +199,6 @@ int queue_get(queue_t *q, int *val) {
 		if (err != SUCCESS) printf("queue_get: sem_post(filled_slots) failed: %s\n", strerror(err));
 		err = pthread_setcancelstate(old_cancel_state, NULL); 
 		if (err != SUCCESS) printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		free(new);
         return QUEUE_ERROR;
     }
 
