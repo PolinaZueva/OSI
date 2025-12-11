@@ -125,7 +125,6 @@ int queue_add(queue_t *q, int val) {
 		printf("Cannot allocate memory for new node\n");		
 		return QUEUE_ERROR;
 	}
-
 	int old_cancel_state;
 	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
 	if (err != SUCCESS) {

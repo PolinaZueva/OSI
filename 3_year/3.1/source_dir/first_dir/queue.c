@@ -5,11 +5,11 @@
 #include "queue.h"
 
 void *qmonitor(void *arg) {
-	int err;
 	queue_t *q = (queue_t *)arg;
 	printf("qmonitor: [%d %d %d]\n", getpid(), getppid(), gettid());
 
 	while (1) {
+		int err;
 		err = pthread_mutex_lock(&q->mutex);
 		if (err != SUCCESS) {
 			printf("qmonitor: pthread_mutex_lock() failed: %s\n", strerror(err));
@@ -31,7 +31,7 @@ queue_t* queue_init(int max_count) {
 	queue_t *q = malloc(sizeof(queue_t));
 	if (q == NULL) {
 		printf("Cannot allocate memory for a queue\n");
-		return NULL;
+        return NULL;
 	}
 
 	q->first = NULL;
@@ -47,20 +47,10 @@ queue_t* queue_init(int max_count) {
 		free(q);
 		return NULL;
 	}
-	err = pthread_cond_init(&q->cond, NULL);
-	if (err != SUCCESS) {
-		printf("queue_init: pthread_cond_init() failed: %s\n", strerror(err));
-		err = pthread_mutex_destroy(&q->mutex);
-		if (err != SUCCESS) printf("queue_init: pthread_mutex_destroy() failed: %s\n", strerror(err));
-		free(q);
-		return NULL;
-	}
 
 	err = pthread_create(&q->qmonitor_tid, NULL, qmonitor, q);
 	if (err != SUCCESS) {
 		printf("queue_init: pthread_create() failed: %s\n", strerror(err));
-		err = pthread_cond_destroy(&q->cond);
-		if (err != SUCCESS) printf("queue_init: pthread_cond_destroy() failed: %s\n", strerror(err));
 		err = pthread_mutex_destroy(&q->mutex);
 		if (err != SUCCESS) printf("queue_init: pthread_mutex_destroy() failed: %s\n", strerror(err));
         free(q);
@@ -81,15 +71,11 @@ void queue_destroy(queue_t *q) {
 	if (err != SUCCESS) {
 		printf("queue_destroy: pthread_join() failed: %s\n", strerror(err));
 	}
-	err = pthread_cond_destroy(&q->cond);
-	if (err != SUCCESS) {
-		printf("queue_destroy: pthread_cond_destroy() failed: %s\n", strerror(err));
-	}
 	err = pthread_mutex_destroy(&q->mutex);
 	if (err != SUCCESS) {
 		printf("queue_destroy: pthread_mutex_destroy() failed: %s\n", strerror(err));
 	}
-	
+
 	qnode_t *current = q->first;
 	while(current != NULL) {
 		qnode_t *tmp = current;
@@ -102,32 +88,27 @@ void queue_destroy(queue_t *q) {
 int queue_add(queue_t *q, int val) {
 	if (q == NULL) return QUEUE_ERROR;
 
-	int err;	
-	qnode_t *new = malloc(sizeof(qnode_t));
-	if (new == NULL) {
-		printf("Cannot allocate memory for new node\n");		
-		return QUEUE_ERROR;
-	}
+	int err;
 	err = pthread_mutex_lock(&q->mutex);
 	if (err != SUCCESS) {
 		printf("queue_add: pthread_mutex_lock() failed: %s\n", strerror(err));
-		free(new);		
 		return QUEUE_ERROR;
 	}
-	int old_cancel_state;
-	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
-	if (err != SUCCESS) {
-		printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err)); 
-		free(new);	
+
+	q->add_attempts++;
+	if (q->count == q->max_count) {
+		err = pthread_mutex_unlock(&q->mutex);
+		if (err != SUCCESS) printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
+		return QUEUE_ERROR;
+	}		
+
+	qnode_t *new = malloc(sizeof(qnode_t));
+	if (new == NULL) {
+		printf("Cannot allocate memory for new node\n");
 		err = pthread_mutex_unlock(&q->mutex);
 		if (err != SUCCESS) printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
 		return QUEUE_ERROR;
 	}
-
-	q->add_attempts++;	
-	while (q->count == q->max_count) {
-		pthread_cond_wait(&q->cond, &q->mutex);
-	}			
 
 	new->val = val;
 	new->next = NULL;
@@ -140,16 +121,10 @@ int queue_add(queue_t *q, int val) {
 	q->count++;
 	q->add_count++;
 
-	pthread_cond_broadcast(&q->cond);
-
-	err = pthread_setcancelstate(old_cancel_state, NULL);
-	if (err != SUCCESS) {
-		printf("queue_add: pthread_setcancelstate() failed: %s\n", strerror(err));
-	}
 	err = pthread_mutex_unlock(&q->mutex);
 	if (err != SUCCESS) {
-		printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err));
-	}		
+		printf("queue_add: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
+	}
 	return QUEUE_SUCCESS;
 }
 
@@ -162,18 +137,12 @@ int queue_get(queue_t *q, int *val) {
 		printf("queue_get: pthread_mutex_lock() failed: %s\n", strerror(err));
 		return QUEUE_ERROR;
 	}
-	int old_cancel_state;
-	err = pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancel_state);
-	if (err != SUCCESS) {
-		printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err)); 
+	
+	q->get_attempts++;
+	if (q->count == 0) {
 		err = pthread_mutex_unlock(&q->mutex);
 		if (err != SUCCESS) printf("queue_get: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
 		return QUEUE_ERROR;
-	}
-	
-	q->get_attempts++;
-	while (q->count == 0) {
-		pthread_cond_wait(&q->cond, &q->mutex);
 	}
 
 	qnode_t *tmp = q->first;
@@ -184,20 +153,16 @@ int queue_get(queue_t *q, int *val) {
 	q->count--;
 	q->get_count++;
 
-	pthread_cond_broadcast(&q->cond);
-
-	err = pthread_setcancelstate(old_cancel_state, NULL);
-	if (err != SUCCESS) {
-		printf("queue_get: pthread_setcancelstate() failed: %s\n", strerror(err));
-	}
 	err = pthread_mutex_unlock(&q->mutex);
 	if (err != SUCCESS) {
 		printf("queue_get: pthread_mutex_unlock() failed: %s\n", strerror(err)); 
-	}	
+	}
 	return QUEUE_SUCCESS;
 }
 
 void queue_print_stats(queue_t *q) {
+	if (q == NULL) return;
+	
 	printf("queue stats: current size %d; attempts: (%ld %ld %ld); counts (%ld %ld %ld)\n",
 		q->count,
 		q->add_attempts, q->get_attempts, q->add_attempts - q->get_attempts,  //попытки
