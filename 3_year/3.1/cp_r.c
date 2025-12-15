@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include "cp_r.h"
 
 int build_path(char* path, size_t size, const char* dir, const char* name) {
@@ -52,17 +53,24 @@ DIR* opendir_with_retry(const char* path) {
     return NULL;
 }
 
-int create_directory_safe(const char* path) {
-    int err;    
+int create_directory_safe(const char* src_path, const char* dst_path) {
+    int err; 
+    struct stat src_stat;
+    err = lstat(src_path, &src_stat);
+    if (err != SUCCESS) {
+        printf("create_directory_safe: lstat() failed for %s: %s\n", src_path, strerror(errno));
+        return ERROR;
+    }
+
     err = pthread_mutex_lock(&dir_mutex);
     if (err != SUCCESS) {
         printf("create_directory_safe: pthread_mutex_lock() failed: %s\n", strerror(err));
         return ERROR;
     }
 
-    err = mkdir(path, DIRECTORY_ACCESS);
+    err = mkdir(dst_path, src_stat.st_mode);
     if (err != SUCCESS && errno != EEXIST) {
-        printf("create_directory_safe: mkdir() failed for %s: %s\n", path, strerror(errno));
+        printf("create_directory_safe: mkdir() failed for %s: %s\n", src_path, strerror(errno));
         err = pthread_mutex_unlock(&dir_mutex);
         if (err != SUCCESS) {
             printf("create_directory_safe: pthread_mutex_unlock() failed: %s\n", strerror(err));
@@ -83,6 +91,14 @@ void *copy_file_thread(void* arg) {
     task_t* task = (task_t*)arg;
     char buffer[BUFFER_SIZE];
     ssize_t bytes_read, bytes_written;
+    int write_error = 0;
+    struct stat src_stat;
+    err = lstat(task->src_path, &src_stat);
+    if (err != SUCCESS) {
+        printf("copy_file_thread: lstat() failed for %s: %s\n", task->src_path, strerror(errno));
+        free(task);
+        return NULL;
+    }
 
     int src_fd = open_with_retry(task->src_path, O_RDONLY, 0);
     if (src_fd == ERROR) {
@@ -90,7 +106,7 @@ void *copy_file_thread(void* arg) {
         free(task);
         return NULL;
     }    
-    int dst_fd = open_with_retry(task->dst_path, O_WRONLY | O_CREAT | O_TRUNC, FILE_ACCESS);
+    int dst_fd = open_with_retry(task->dst_path, O_WRONLY | O_CREAT | O_TRUNC, src_stat.st_mode);
     if (dst_fd == ERROR) {
         printf("copy_file_thread: failed to create target %s\n", task->dst_path);
         err = close(src_fd);
@@ -111,11 +127,20 @@ void *copy_file_thread(void* arg) {
             break;  
         }
         
-        bytes_written = write(dst_fd, buffer, bytes_read);
-        if (bytes_written != bytes_read) {
-            printf("copy_file_thread: write error to %s: %s\n", task->dst_path, strerror(errno));
-            break;
+        ssize_t total_written = 0;
+        char* ptr = buffer;
+        while (total_written < bytes_read) {
+            bytes_written = write(dst_fd, ptr + total_written, bytes_read - total_written);
+            if (bytes_written == ERROR) {
+                printf("copy_file_thread: write error to %s: %s\n", task->dst_path, strerror(errno));
+                write_error = 1;
+                break;
+            }
+            total_written += bytes_written;
         }
+        if (write_error) {
+            break;  
+        }        
     }
     err = close(src_fd);
     if (err != SUCCESS) {
@@ -210,7 +235,7 @@ int process_single_entry(const char* src_dir, const char* dst_dir, const char* e
 void *work_directory_thread(void* arg) {
     int err;
     task_t* task = (task_t*)arg;
-    err = create_directory_safe(task->dst_path);
+    err = create_directory_safe(task->src_path, task->dst_path);
     if (err != SUCCESS) {
         printf("work_directory_thread: failed to create directory %s\n", task->dst_path);
         free(task);
@@ -266,7 +291,7 @@ int main(int argc, char* argv[]) {
         printf("main: lstat() failed: %s\n", strerror(errno));
         return ERROR;
     }
-    if (!S_ISDIR(stat_buf.st_mode)) {
+    if (S_ISDIR(stat_buf.st_mode) != true) {
         printf("main: Source path %s is not a directory\n", argv[1]);
         return ERROR;
     }
