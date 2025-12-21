@@ -47,6 +47,7 @@ queue_t* queue_init(int max_count) {
 		free(q);
 		return NULL;
 	}
+	
 	err = sem_init(&q->filled_slots, SEMAPHORE_PRIVATE, 0);
 	if (err != SUCCESS) {
 		printf("queue_init: sem_init(filled_slots) failed: %s\n", strerror(err));
